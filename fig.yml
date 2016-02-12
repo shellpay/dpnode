@@ -1,0 +1,64 @@
+ShellCoind:
+  build: ShellCoind-docker
+  volumes:
+    - data/ShellCoind/ShellCoin/data:/ShellCoin/data
+  command: "bash -c 'sudo chown -R ShellCoin:ShellCoin /ShellCoin/data && ShellCoind'"
+
+
+insight:
+  build: insight-shell-api
+  volumes:
+    - data/insight/root/data:/root/data
+  links:
+    - ShellCoind:ShellCoind
+  command: "node insight.js"
+
+
+shellpartyd:
+  build: shellpartyd-docker
+  volumes:
+    - data/shellpartyd/shellparty/data:/shellparty/data
+  links:
+    - ShellCoind:ShellCoind
+    - insight:insight
+  command: "bash -c 'sudo chown -R shellparty:shellparty /shellparty/data && counterpartyd --backend-rpc-connect=ShellCoind --backend-rpc-port=22555 --blockchain-service-connect=http://insight:3000 --verbose server'"
+
+
+mongo:
+  image: mongo
+  volumes:
+    - data/mongo/data/db:/data/db
+  command: "mongod"
+
+
+shellblockd:
+  build: shellblockd-docker
+  volumes:
+    - data/shellblockd/shellblock/data:/shellblock/data
+  links:
+    - insight:insight
+    - shellpartyd:shellpartyd
+    - mongo:mongo
+  command: "bash -c 'sudo chown -R shellblock:shellblock /shellblock/data && counterblockd --counterpartyd-rpc-connect=shellpartyd --counterpartyd-rpc-port=4000 --counterpartyd-rpc-user=user --counterpartyd-rpc-password=pass --blockchain-service-name=insight --blockchain-service-connect=http://insight:3000 --mongodb-connect=mongo --mongodb-port=27017 --rpc-host=0.0.0.0 --rpc-port=4100 --socketio-host=0.0.0.0 --socketio-port=4101 --socketio-chat-host=0.0.0.0 --socketio-chat-port=4102'"
+
+
+wallet:
+  build: shellparty-wallet-dev-server-docker
+  links:
+    - shellblockd:shellblockd
+  # ports:
+  #   - "80:8080"
+  command: "shellparty-wallet-dev-server"
+
+
+ssl:
+  image: nginx:1.7.12
+  volumes:
+    - ssl/conf.d:/etc/nginx/conf.d
+    - ~/ssl:/ssl
+  ports:
+    - "80:80"
+    - "443:443"
+  links:
+    - wallet:wallet
+
